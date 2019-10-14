@@ -223,7 +223,6 @@ where R: io::Read
     let max_vendor_id = reader.read::<u16>(16)? as usize;
 
     let vendor_consent_type = reader.read::<u8>(1)?;
-    println!("vendor_consent_type: {:#?}", vendor_consent_type);
 
     let vendor_consent = match vendor_consent_type {
         0 => parse_v1_bitfield(reader, max_vendor_id)?,
