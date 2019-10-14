@@ -68,7 +68,11 @@ impl VendorConsent {
         match self {
             VendorConsent::V1(ref v1) => v1.vendor_consent.contains(id - 1),
         }
-
+    }
+    pub fn purpose_allowed(&self, id: usize) -> bool {
+        match self {
+            VendorConsent::V1(ref v1) => v1.purposes_allowed.contains(id - 1),
+        }
     }
 }
 
