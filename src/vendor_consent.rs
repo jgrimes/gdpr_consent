@@ -53,6 +53,7 @@ pub struct V1 {
     pub vendor_consent: BitSet,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum VendorConsent {
     V1(V1),
 }
@@ -62,6 +63,12 @@ impl VendorConsent {
         match self {
             VendorConsent::V1(ref v1) => serialize_v1(v1),
         }
+    }
+    pub fn vendor_consent(&self, id: usize) -> bool {
+        match self {
+            VendorConsent::V1(ref v1) => v1.vendor_consent.contains(id - 1),
+        }
+
     }
 }
 
@@ -138,20 +145,13 @@ fn parse_v1_bitfield<R>(
 ) -> Result<BitSet, Error>
 where R: io::Read
 {
-    let buf_size = max_vendor_id / 8 + if max_vendor_id % 8 == 0 { 0 } else { 1 };
-    let mut buf = Vec::with_capacity(buf_size);
+    let mut buf = BitVec::with_capacity(max_vendor_id);
 
-    // read full bytes
-    for _ in 0..buf_size {
-        buf.push(reader.read::<u8>(8)?);
+    for _ in 0..max_vendor_id {
+        buf.push(reader.read::<u8>(1)? != 0);
     }
 
-    // read remainder
-    if max_vendor_id % 8 > 0 {
-        buf.push(reader.read::<u8>(max_vendor_id as u32 % 8)?);
-    }
-
-    Ok(BitSet::from_bytes(&buf))
+    Ok(BitSet::from_bit_vec(buf))
 }
 
 fn parse_v1_range<R>(
@@ -218,7 +218,10 @@ where R: io::Read
 
     let max_vendor_id = reader.read::<u16>(16)? as usize;
 
-    let vendor_consent = match reader.read::<u8>(1)? {
+    let vendor_consent_type = reader.read::<u8>(1)?;
+    println!("vendor_consent_type: {:#?}", vendor_consent_type);
+
+    let vendor_consent = match vendor_consent_type {
         0 => parse_v1_bitfield(reader, max_vendor_id)?,
         _ => parse_v1_range(reader, max_vendor_id)?,
     };
@@ -241,7 +244,12 @@ impl FromStr for VendorConsent {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let data = base64::decode(s)?;
+        let data = base64::decode_config(s, base64::Config::new(
+            base64::CharacterSet::UrlSafe,
+            false,
+            false,
+            base64::LineWrap::NoWrap,
+        ))?;
         let mut cursor = io::Cursor::new(&data);
         let mut reader = BitReader::endian(&mut cursor, BigEndian);
 
@@ -426,6 +434,21 @@ mod tests {
 
     #[test]
     fn deserialize_good() {
+        let v: Result<VendorConsent, _> = "BOmGAOiOmGAOiAAABAENCO-AAAAml7_______9______5uz_Ov_v_f__33e8__9v_l_7_-___u_-3zd4-_1vf99yfm1-7etr3tp_87ues2_Xur__59__3z3_9phPrsk89ry0".parse();
+
+
+        let v = match v {
+            Ok(res) => {
+                res
+            }
+            Err(e) => {
+                return ();
+            }
+        };
+
+        assert_eq!(true, v.vendor_consent(591));
+        assert_eq!(false, v.vendor_consent(616));
+
         let v = "BOEFEAyOEFEAyAHABDENAI4AAAB9vABAASA".parse().unwrap();
 
         let expected_purposes_allowed = BitSet::from_bytes(&[0b11100000, 0b00000000, 0b00000000]);
@@ -449,5 +472,6 @@ mod tests {
                 assert_eq!(v1.vendor_consent, expected_vendor_consent);
             }
         }
+
     }
 }
